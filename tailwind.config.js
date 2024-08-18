@@ -17,6 +17,12 @@ export default {
                 'secondary': '#ffed4a',
                 'danger': '#e3342f',
             },
+            fontFamily: {
+                "hanken-grotesk": ["Hanken Grotesk", "sans-serif"],
+            },
+            fontSize: {
+                "2xs": ".625rem", // 10px
+            }
             
         },
     },
