@@ -3,9 +3,13 @@
 namespace App\Http\Controllers;
 
 use App\Models\Job;
+use App\Models\Tag;
 use App\Http\Requests\StoreJobRequest;
 use App\Http\Requests\UpdateJobRequest;
 use Illuminate\Queue\Jobs\Job as JobsJob;
+use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Arr;
 
 class JobController extends Controller
 {
@@ -18,7 +22,7 @@ class JobController extends Controller
         
 
         return view('job.index', [
-            'jobs' => jobs[0],
+            'jobs' => $jobs[0],
             'featuredJobs' =>$jobs[1],
             'tags' => Tag::all(),
         ]);

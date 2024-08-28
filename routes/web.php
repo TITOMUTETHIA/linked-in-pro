@@ -1,6 +1,5 @@
 <?php
 
-
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\JobController;
 use App\Http\Controllers\TagController;
@@ -26,4 +25,4 @@ Route::middleware('guest')->group(function () {
 });
 
 
-Route::delete('/logout', [sessionController::class, 'destroy'])->middleware('auth');
+Route::delete('/logout', [SessionController::class, 'destroy'])->middleware('auth');

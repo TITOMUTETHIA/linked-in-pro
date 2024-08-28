@@ -3,7 +3,7 @@
 namespace App\Http\Controllers;
 
 use Illuminate\Support\Facades\Auth;
-use Illiminate\validate\validationExeption;
+use Illuminate\Validation\ValidationException;
 
 
 class SessionController extends Controller
@@ -27,9 +27,9 @@ class SessionController extends Controller
             'password' => ['requied']
         ]);
         if (! Auth::attempt($attribute)) {
-            throw ValidationExeption::withMessage([
+            throw ValidationException::withMessages([
                 'email' => 'sorry, those credentials do not match.'
-            ])
+            ]);
         }
         request()->session()->regenerate();
         return redirect('/');

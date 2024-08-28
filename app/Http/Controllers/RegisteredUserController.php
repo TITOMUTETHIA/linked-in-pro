@@ -4,6 +4,9 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Support\Facades\File;
+use App\Models\User;
+use Illuminate\Support\Facades\Auth;
 
 class RegisteredUserController extends Controller
 {
@@ -30,7 +33,7 @@ class RegisteredUserController extends Controller
     
         $employerAttributes = $request->validate([
             'employer' =>['required'],
-            'logo' => ['required', File::type(['png', 'jpg', 'webp'])],
+            'logo' => ['required', File::type([])],
             
         ]);
         $user = User::create($userAttributes);
@@ -43,5 +46,6 @@ class RegisteredUserController extends Controller
 
         return redirect('/');
     }
+}
 
    
