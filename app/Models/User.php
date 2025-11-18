@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -91,11 +90,27 @@ class User extends Authenticatable
     }
 
     /**
+     * Get the notifications for the user.
+     */
+    public function notifications()
+    {
+        return $this->hasMany(Notification::class);
+    }
+
+    /**
      * Check if the user is following another user.
      */
     public function isFollowing(User $user): bool
     {
         return $this->following()->where('following_id', $user->id)->exists();
+    }
+
+    /**
+     * Check if another user is following this user.
+     */
+    public function isFollowedBy(User $user): bool
+    {
+        return $this->followers()->where('follower_id', $user->id)->exists();
     }
 
     /**
@@ -122,14 +137,23 @@ class User extends Authenticatable
      */
     public function getAvatarUrlAttribute(): string
     {
-        return $this->attributes['avatar_url'] ?? 'https://ui-avatars.com/api/?name=' . urlencode($this->name) . '&color=7F9CF5&background=EBF4FF';
+        return $this->attributes['avatar_url']
+            ?? "https://ui-avatars.com/api/?name=" . urlencode($this->name) . "&color=EC4899&background=FCE7F3";
     }
 
     /**
-     * Legacy relationship for employer compatibility.
+     * Get the display name (username or name).
      */
-    public function employer()
+    public function getDisplayNameAttribute(): string
     {
-        return $this->hasOne(Employer::class);
+        return $this->username ?? $this->name;
+    }
+
+    /**
+     * Get the profile URL.
+     */
+    public function getProfileUrlAttribute(): string
+    {
+        return route('users.show', $this->username ?? $this->id);
     }
 }
