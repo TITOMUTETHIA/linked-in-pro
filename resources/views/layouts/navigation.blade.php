@@ -231,4 +231,13 @@
         </div>
         @endauth
     </div>
+
+    <!-- Mobile Footer with Branding -->
+    <div class="lg:hidden border-t border-gray-200 bg-white">
+        <div class="px-4 py-3">
+            <div class="text-center text-xs text-gray-500">
+                <span class="font-medium">© 2025 Toongram</span> - Share your world
+            </div>
+        </div>
+    </div>
 </nav>
