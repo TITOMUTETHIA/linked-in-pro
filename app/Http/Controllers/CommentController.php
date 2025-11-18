@@ -50,6 +50,11 @@ class CommentController extends Controller
 
         $comment->load(['user', 'likes']);
 
+        // Create notification if user is commenting on someone else's post
+        if ($post->user_id !== $user->id) {
+            Notification::createCommentNotification($user, $post, $comment);
+        }
+
         return response()->json([
             'success' => true,
             'data' => [
