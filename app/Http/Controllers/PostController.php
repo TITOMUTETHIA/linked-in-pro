@@ -3,32 +3,41 @@
 namespace App\Http\Controllers;
 
 use App\Models\Post;
-use App\Models\Hashtag;
-use App\Models\Like;
 use App\Models\User;
+use App\Services\PostService;
+use App\Models\Follow;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Support\Str;
+use Illuminate\Http\JsonResponse;
 
 class PostController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
-    public function index()
+    private PostService $postService;
+
+    public function __construct(PostService $postService)
     {
+        $this->postService = $postService;
+    }
+
+    /**
+     * Display the main feed.
+     */
+    public function index(Request $request)
+    {
+        if (!Auth::check()) {
+            return redirect()->route('login');
+        }
+
         $user = Auth::user();
-        $posts = Post::forUser($user)
-            ->with(['user', 'media', 'likes', 'hashtags'])
-            ->latest()
-            ->paginate(20);
+        $page = $request->get('page', 1);
+
+        $posts = $this->postService->getFeedForUser($user, $page);
 
         return view('home', compact('posts'));
     }
 
     /**
-     * Show the form for creating a new resource.
+     * Show the post creation form.
      */
     public function create()
     {
@@ -36,119 +45,68 @@ class PostController extends Controller
     }
 
     /**
-     * Store a newly created resource in storage.
+     * Store a new post with media and hashtags.
      */
     public function store(Request $request)
     {
+        $this->authorize('create', Post::class);
+
         $request->validate([
-            'caption' => 'nullable|string|max:2000',
+            'caption' => 'nullable|string|max:' . config('toongram.limits.max_caption_length'),
             'location' => 'nullable|string|max:255',
             'privacy_level' => 'required|in:public,friends,private',
-            'media_files.*' => 'required|file|mimes:jpg,jpeg,png,gif,mp4,mov|max:102400',
+            'media_files.*' => 'file|mimes:jpg,jpeg,png,gif,mp4,mov|max:' . (config('toongram.limits.media.max_image_size') / 1024),
             'media_order' => 'nullable|array',
         ]);
 
-        $user = Auth::user();
+        try {
+            $post = $this->postService->createPost(
+                $request->only(['caption', 'location', 'privacy_level']),
+                $request->file('media_files') ?? []
+            );
 
-        // Create the post
-        $post = Post::create([
-            'user_id' => $user->id,
-            'caption' => $request->caption,
-            'location' => $request->location,
-            'privacy_level' => $request->privacy_level,
-        ]);
+            return response()->json([
+                'success' => true,
+                'data' => $post,
+                'message' => 'Post created successfully!'
+            ]);
 
-        // Handle media uploads
-        if ($request->hasFile('media_files')) {
-            $mediaOrder = $request->media_order ?? [];
-            $uploadedFiles = [];
-
-            foreach ($request->file('media_files') as $index => $file) {
-                $errors = Media::validateFile($file);
-                if (!empty($errors)) {
-                    return back()->withErrors(['media_files' => $errors]);
-                }
-
-                // Generate organized file path
-                $datePath = now()->format('Y/m/d');
-                $fileType = str_starts_with($file->getMimeType(), 'image/') ? 'images' : 'videos';
-                $filename = Str::uuid() . '.' . $file->getClientOriginalExtension();
-                $filePath = "media/{$datePath}/{$fileType}/{$filename}";
-
-                // Store file
-                Storage::disk('media')->put($filePath, file_get_contents($file));
-
-                // Determine order
-                $order = array_search($index, $mediaOrder) !== false ? $mediaOrder[$index] : $index;
-
-                // Create media record with metadata
-                $metadata = [
-                    'original_filename' => $file->getClientOriginalName(),
-                    'processed' => true,
-                    'thumbnail_generated' => false,
-                ];
-
-                // Add file-specific metadata
-                if (str_starts_with($file->getMimeType(), 'image/')) {
-                    $imageInfo = getimagesize($file->getPathname());
-                    $metadata['width'] = $imageInfo[0];
-                    $metadata['height'] = $imageInfo[1];
-                }
-
-                $media = $post->media()->create([
-                    'file_path' => $filePath,
-                    'file_type' => str_starts_with($file->getMimeType(), 'image/') ? 'image' : 'video',
-                    'file_size' => $file->getSize(),
-                    'order' => $order,
-                    'metadata' => $metadata,
-                ]);
-
-                $uploadedFiles[] = $media;
-            }
-
-            // Generate thumbnails for images
-            foreach ($uploadedFiles as $media) {
-                if ($media->file_type === 'image') {
-                    $this->generateThumbnail($media);
-                }
-            }
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 422);
         }
-
-        // Process hashtags
-        if ($request->caption) {
-            $hashtags = Hashtag::extractHashtags($request->caption);
-            foreach ($hashtags as $hashtagName) {
-                $hashtag = Hashtag::findOrCreateByName($hashtagName);
-                $post->hashtags()->attach($hashtag->id);
-                $hashtag->incrementUsage();
-            }
-        }
-
-        return redirect()->route('home')
-            ->with('success', 'Post created successfully!');
     }
 
     /**
-     * Display the specified resource.
+     * Display a specific post.
      */
     public function show(Post $post)
     {
         $user = Auth::user();
 
-        // Check if user can view this post
         if (!$user || !$this->canUserViewPost($user, $post)) {
             abort(403, 'You cannot view this post.');
         }
 
-        $post->load(['user', 'media', 'comments' => function ($query) {
-            $query->whereNull('parent_id')->with('user', 'likes')->latest();
-        }, 'hashtags', 'likes']);
+        $post->load([
+            'user',
+            'media',
+            'comments' => function ($query) {
+                $query->whereNull('parent_id')
+                    ->with(['user', 'likes'])
+                    ->latest();
+            },
+            'hashtags',
+            'likes'
+        ]);
 
         return view('posts.show', compact('post'));
     }
 
     /**
-     * Show the form for editing the specified resource.
+     * Show the post editing form.
      */
     public function edit(Post $post)
     {
@@ -159,101 +117,101 @@ class PostController extends Controller
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update a post.
      */
     public function update(Request $request, Post $post)
     {
         $this->authorize('update', $post);
 
         $request->validate([
-            'caption' => 'nullable|string|max:2000',
+            'caption' => 'nullable|string|max:' . config('toongram.limits.max_caption_length'),
             'location' => 'nullable|string|max:255',
             'privacy_level' => 'required|in:public,friends,private',
         ]);
 
-        $post->update([
-            'caption' => $request->caption,
-            'location' => $request->location,
-            'privacy_level' => $request->privacy_level,
-        ]);
+        try {
+            $updatedPost = $this->postService->updatePost(
+                $post,
+                $request->only(['caption', 'location', 'privacy_level'])
+            );
 
-        // Update hashtags
-        $post->hashtags()->detach();
-        if ($request->caption) {
-            $hashtags = Hashtag::extractHashtags($request->caption);
-            foreach ($hashtags as $hashtagName) {
-                $hashtag = Hashtag::findOrCreateByName($hashtagName);
-                $post->hashtags()->attach($hashtag->id);
-                $hashtag->incrementUsage();
-            }
+            return response()->json([
+                'success' => true,
+                'data' => $updatedPost,
+                'message' => 'Post updated successfully!'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage()
+            ], 422);
         }
-
-        return redirect()->route('posts.show', $post)
-            ->with('success', 'Post updated successfully!');
     }
 
     /**
-     * Remove the specified resource from storage.
+     * Delete a post.
      */
     public function destroy(Post $post)
     {
         $this->authorize('delete', $post);
 
-        // Delete associated media files
-        foreach ($post->media as $media) {
-            Storage::disk('media')->delete($media->file_path);
-            $thumbnailPath = str_replace('media/', 'thumbnails/', $media->file_path);
-            Storage::disk('thumbnails')->delete($thumbnailPath);
+        try {
+            $this->postService->deletePost($post);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Post deleted successfully!'
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete post: ' . $e->getMessage()
+            ], 500);
         }
-
-        // Update hashtag usage counts
-        foreach ($post->hashtags as $hashtag) {
-            $hashtag->decrementUsage();
-        }
-
-        $post->delete();
-
-        return redirect()->route('home')
-            ->with('success', 'Post deleted successfully!');
     }
 
     /**
      * Toggle like on a post.
      */
-    public function toggleLike(Post $post)
+    public function toggleLike(Post $post): JsonResponse
     {
-        $user = Auth::user();
-        $isLiked = Like::toggleLike($user, $post);
+        try {
+            $result = $this->postService->toggleLike($post);
 
-        // Create notification if user liked someone else's post
-        if ($isLiked && $post->user_id !== $user->id) {
-            Notification::createLikeNotification($user, $post);
+            return response()->json([
+                'success' => true,
+                'liked' => $result['liked'],
+                'like_count' => $result['like_count'],
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to toggle like: ' . $e->getMessage()
+            ], 500);
         }
-
-        return response()->json([
-            'liked' => $isLiked,
-            'like_count' => $post->getLikeCount(),
-            'notification_sent' => $isLiked && $post->user_id !== $user->id,
-        ]);
     }
 
     /**
-     * Show explore/trending posts.
+     * Show explore page with trending content.
      */
     public function explore()
     {
-        $trendingPosts = Post::trending()
-            ->with(['user', 'media', 'likes'])
-            ->take(20)
-            ->get();
+        $trendingPosts = $this->postService->getTrendingPosts();
 
-        $trendingHashtags = Hashtag::trending()
+        $trendingHashtags = \App\Models\Hashtag::trending()
             ->take(15)
             ->get();
 
         $suggestedUsers = Follow::getSuggestedFollows(Auth::user(), 8);
 
-        return view('explore', compact('trendingPosts', 'trendingHashtags', 'suggestedUsers'));
+        return view('explore', compact(
+            'trendingPosts',
+            'trendingHashtags',
+            'suggestedUsers'
+        ));
     }
 
     /**
@@ -278,70 +236,5 @@ class PostController extends Controller
 
         // Private posts can only be viewed by the author
         return false;
-    }
-
-    /**
-     * Generate thumbnail for an image.
-     */
-    private function generateThumbnail(Media $media): void
-    {
-        try {
-            $imagePath = Storage::disk('media')->path($media->file_path);
-            $imageInfo = getimagesize($imagePath);
-
-            if (!$imageInfo) {
-                return;
-            }
-
-            $width = $imageInfo[0];
-            $height = $imageInfo[1];
-            $thumbnailSize = 300;
-
-            // Calculate thumbnail dimensions maintaining aspect ratio
-            if ($width > $height) {
-                $newWidth = $thumbnailSize;
-                $newHeight = intval($height * $thumbnailSize / $width);
-            } else {
-                $newHeight = $thumbnailSize;
-                $newWidth = intval($width * $thumbnailSize / $height);
-            }
-
-            // Create thumbnail using GD
-            $source = match ($imageInfo[2]) {
-                IMAGETYPE_JPEG => imagecreatefromjpeg($imagePath),
-                IMAGETYPE_PNG => imagecreatefrompng($imagePath),
-                IMAGETYPE_GIF => imagecreatefromgif($imagePath),
-                default => null,
-            };
-
-            if ($source) {
-                $thumbnail = imagecreatetruecolor($newWidth, $newHeight);
-                imagecopyresampled($thumbnail, $source, 0, 0, 0, 0, $newWidth, $newHeight, $width, $height);
-
-                // Generate thumbnail path
-                $thumbnailPath = str_replace('media/', 'thumbnails/', $media->file_path);
-                $thumbnailPath = preg_replace('/\.[^.]+$/', '_thumb.jpg', $thumbnailPath);
-
-                // Ensure thumbnail directory exists
-                $thumbnailDir = dirname(Storage::disk('thumbnails')->path($thumbnailPath));
-                if (!is_dir($thumbnailDir)) {
-                    mkdir($thumbnailDir, 0755, true);
-                }
-
-                // Save thumbnail
-                imagejpeg($thumbnail, Storage::disk('thumbnails')->path($thumbnailPath), 85);
-
-                // Update metadata
-                $media->update(['metadata' => array_merge($media->metadata, [
-                    'thumbnail_generated' => true,
-                ])]);
-
-                imagedestroy($source);
-                imagedestroy($thumbnail);
-            }
-        } catch (\Exception $e) {
-            // Log error but don't fail the post creation
-            \Log::error('Thumbnail generation failed: ' . $e->getMessage());
-        }
     }
 }
