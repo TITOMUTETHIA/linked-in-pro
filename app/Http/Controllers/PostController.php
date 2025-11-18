@@ -225,9 +225,15 @@ class PostController extends Controller
         $user = Auth::user();
         $isLiked = Like::toggleLike($user, $post);
 
+        // Create notification if user liked someone else's post
+        if ($isLiked && $post->user_id !== $user->id) {
+            Notification::createLikeNotification($user, $post);
+        }
+
         return response()->json([
             'liked' => $isLiked,
             'like_count' => $post->getLikeCount(),
+            'notification_sent' => $isLiked && $post->user_id !== $user->id,
         ]);
     }
 
