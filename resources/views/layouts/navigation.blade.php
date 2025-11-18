@@ -5,8 +5,9 @@
             <div class="flex items-center">
                 <!-- Logo -->
                 <div class="shrink-0 flex items-center">
-                    <a href="{{ route('home') }}" class="text-2xl font-bold text-pink-600">
-                        📸 Toongram
+                    <a href="{{ route('home') }}" class="flex items-center space-x-2 text-2xl font-bold text-pink-600 hover:text-pink-700 transition-colors">
+                        <span class="text-3xl">📸</span>
+                        <span class="hidden sm:inline">Toongram</span>
                     </a>
                 </div>
 
