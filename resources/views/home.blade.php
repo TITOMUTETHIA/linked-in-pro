@@ -614,10 +614,100 @@ function followUser(userId) {
     });
 }
 
+// Load notifications for dropdown
+function loadNotifications() {
+    fetch('/notifications')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const notificationList = document.getElementById('notificationList');
+                if (notificationList) {
+                    if (data.data.notifications.length > 0) {
+                        notificationList.innerHTML = data.data.notifications.map(notification => `
+                            <div class="px-4 py-3 hover:bg-gray-50 transition cursor-pointer border-b border-gray-100 ${notification.read_at ? 'opacity-60' : ''}"
+                                 onclick="markNotificationAsRead(${notification.id})">
+                                <div class="flex items-start space-x-3">
+                                    <div class="flex-shrink-0">
+                                        <img src="${notification.data.liker_avatar || notification.data.sender_avatar || '/placeholder.png'}"
+                                             alt="User" class="w-8 h-8 rounded-full object-cover">
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <p class="text-sm text-gray-900">${notification.data.message}</p>
+                                        <p class="text-xs text-gray-500 mt-1">${new Date(notification.created_at).toLocaleString()}</p>
+                                    </div>
+                                    <span class="text-lg">${notification.data.icon}</span>
+                                </div>
+                            </div>
+                        `).join('');
+                    } else {
+                        notificationList.innerHTML = '<div class="px-4 py-3 text-center text-sm text-gray-500">No notifications yet</div>';
+                    }
+                }
+            }
+        })
+        .catch(error => {
+            console.error('Error loading notifications:', error);
+            const notificationList = document.getElementById('notificationList');
+            if (notificationList) {
+                notificationList.innerHTML = '<div class="px-4 py-3 text-center text-sm text-gray-500">Unable to load notifications</div>';
+            }
+        });
+}
+
+// Mark notification as read
+function markNotificationAsRead(notificationId) {
+    fetch(`/notifications/${notificationId}/read`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            loadNotifications();
+            updateNotificationCount();
+        }
+    });
+}
+
+// Mark all notifications as read
+function markAllNotificationsAsRead() {
+    fetch('/notifications/read-all', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            loadNotifications();
+            updateNotificationCount();
+        }
+    });
+}
+
 // Initialize real-time features when page loads
 document.addEventListener('DOMContentLoaded', function() {
     startRealTimeNotifications();
     updateNotificationCount();
+
+    // Load notifications when dropdown is opened
+    const notificationDropdown = document.getElementById('notificationDropdown');
+    if (notificationDropdown) {
+        // Monitor for dropdown open state (you may need to adapt this based on your dropdown implementation)
+        const observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.target.classList.contains('show')) {
+                    loadNotifications();
+                }
+            });
+        });
+        observer.observe(notificationDropdown, { attributes: true, attributeFilter: ['class'] });
+    }
 });
 
 // Debounce function for performance
