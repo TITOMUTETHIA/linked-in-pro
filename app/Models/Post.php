@@ -35,7 +35,7 @@ class Post extends Model
             'created_at' => 'datetime',
             'updated_at' => 'datetime',
         ];
-    ];
+    }
 
     /**
      * Get the user that owns the post.
