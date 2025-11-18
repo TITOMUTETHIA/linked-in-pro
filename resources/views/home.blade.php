@@ -265,9 +265,98 @@
     </div>
 </div>
 
+<style>
+/* Like popup animation styles */
+.like-popup {
+    position: fixed;
+    z-index: 9999;
+    pointer-events: none;
+    animation: floatUp 2s ease-out forwards;
+}
+
+@keyframes floatUp {
+    0% {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+    50% {
+        opacity: 1;
+        transform: translateY(-30px) scale(1.2);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-60px) scale(0.8);
+    }
+}
+
+.heart-particle {
+    position: absolute;
+    animation: floatUpParticle 2s ease-out forwards;
+    pointer-events: none;
+}
+
+@keyframes floatUpParticle {
+    0% {
+        opacity: 1;
+        transform: translateY(0) translateX(0) scale(1);
+    }
+    100% {
+        opacity: 0;
+        transform: translateY(-100px) translateX(var(--x-offset)) scale(0.3);
+    }
+}
+
+.heart-burst {
+    animation: heartBurst 0.6s ease-out;
+}
+
+@keyframes heartBurst {
+    0% {
+        transform: scale(1);
+    }
+    25% {
+        transform: scale(1.3);
+    }
+    50% {
+        transform: scale(1.1);
+    }
+    75% {
+        transform: scale(1.2);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.notification-badge {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+        opacity: 1;
+    }
+    50% {
+        transform: scale(1.1);
+        opacity: 0.8;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+</style>
+
 <script>
-// Toggle like functionality
+// Toggle like functionality with cool animation
 function toggleLike(postId) {
+    const button = event.currentTarget;
+    const isLiked = button.getAttribute('x-data').includes('true');
+
+    // Add heart burst animation
+    button.classList.add('heart-burst');
+
     fetch(`/posts/${postId}/like`, {
         method: 'POST',
         headers: {
@@ -278,11 +367,224 @@ function toggleLike(postId) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            const button = event.currentTarget;
-            const isLiked = button.getAttribute('x-data').includes('true');
-            button.setAttribute('x-data', `{ liked: ${!isLiked}, likeCount: ${data.like_count} }`);
+            // Create like popup if user liked the post
+            if (data.liked) {
+                createLikePopup(button);
+                createHeartParticles(button);
+            }
+
+            // Update button state
+            button.setAttribute('x-data', `{ liked: ${data.liked}, likeCount: ${data.like_count} }`);
+
+            // Remove heart burst class after animation
+            setTimeout(() => {
+                button.classList.remove('heart-burst');
+            }, 600);
         }
     });
+}
+
+// Create cool like popup with user info
+function createLikePopup(element) {
+    const rect = element.getBoundingClientRect();
+    const container = document.getElementById('likePopupContainer');
+
+    const popup = document.createElement('div');
+    popup.className = 'like-popup';
+    popup.style.left = (rect.left + rect.width / 2 - 60) + 'px';
+    popup.style.top = (rect.top - 80) + 'px';
+
+    popup.innerHTML = `
+        <div class="bg-white rounded-full shadow-lg border-2 border-pink-500 px-4 py-2 flex items-center space-x-2">
+            <span class="text-pink-500 font-bold text-lg">❤️</span>
+            <span class="text-gray-800 text-sm font-medium">Liked!</span>
+        </div>
+    `;
+
+    container.appendChild(popup);
+
+    // Remove popup after animation
+    setTimeout(() => {
+        popup.remove();
+    }, 2000);
+}
+
+// Create floating heart particles
+function createHeartParticles(element) {
+    const rect = element.getBoundingClientRect();
+    const container = document.getElementById('likePopupContainer');
+
+    // Create multiple heart particles
+    for (let i = 0; i < 8; i++) {
+        setTimeout(() => {
+            const particle = document.createElement('div');
+            particle.className = 'heart-particle';
+            particle.style.left = (rect.left + rect.width / 2) + 'px';
+            particle.style.top = rect.top + 'px';
+            particle.style.setProperty('--x-offset', (Math.random() - 0.5) * 100 + 'px');
+
+            const hearts = ['❤️', '💖', '💗', '💝', '💕'];
+            particle.innerHTML = `<span style="font-size: ${20 + Math.random() * 10}px">${hearts[Math.floor(Math.random() * hearts.length)]}</span>`;
+
+            container.appendChild(particle);
+
+            // Remove particle after animation
+            setTimeout(() => {
+                particle.remove();
+            }, 2000);
+        }, i * 100);
+    }
+}
+
+// Real-time notifications using EventSource
+function startRealTimeNotifications() {
+    const eventSource = new EventSource('/notifications/stream');
+
+    eventSource.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+
+        if (data.type === 'notification') {
+            handleNewNotification(data.data);
+        } else if (data.type === 'like_popup') {
+            handleRealTimeLike(data.data);
+        }
+    };
+
+    eventSource.onerror = function(event) {
+        console.error('EventSource failed:', event);
+        // Reconnect after 5 seconds
+        setTimeout(startRealTimeNotifications, 5000);
+    };
+}
+
+// Handle new notifications
+function handleNewNotification(notification) {
+    // Update notification count
+    updateNotificationCount();
+
+    // Show notification toast
+    showNotificationToast(notification);
+
+    // Update notification dropdown if open
+    if (document.querySelector('#notificationDropdown.show')) {
+        loadNotifications();
+    }
+}
+
+// Handle real-time like from other users
+function handleRealTimeLike(likeData) {
+    // Create a special popup for likes from other users
+    const container = document.getElementById('likePopupContainer');
+
+    const popup = document.createElement('div');
+    popup.className = 'like-popup';
+    popup.style.right = '20px';
+    popup.style.top = '100px';
+
+    popup.innerHTML = `
+        <div class="bg-white rounded-lg shadow-xl border-2 border-pink-500 p-4 min-w-80">
+            <div class="flex items-center space-x-3">
+                <img src="${likeData.user.avatar_url}" alt="${likeData.user.name}"
+                     class="w-12 h-12 rounded-full object-cover border-2 border-pink-300">
+                <div class="flex-1">
+                    <p class="font-semibold text-gray-900">${likeData.message}</p>
+                    <p class="text-xs text-gray-500">just now</p>
+                </div>
+                <span class="text-2xl">❤️</span>
+            </div>
+            ${likeData.post_image ? `<img src="${likeData.post_image}" alt="Post" class="mt-2 w-full h-32 object-cover rounded">` : ''}
+        </div>
+    `;
+
+    container.appendChild(popup);
+
+    // Remove popup after animation
+    setTimeout(() => {
+        popup.remove();
+    }, 4000);
+
+    // Play like sound effect (optional)
+    playLikeSound();
+}
+
+// Show notification toast
+function showNotificationToast(notification) {
+    const toast = document.createElement('div');
+    toast.className = 'fixed bottom-4 right-4 bg-white rounded-lg shadow-xl border border-gray-200 p-4 min-w-80 transform transition-all duration-300 translate-y-full opacity-0';
+    toast.style.zIndex = '10000';
+
+    toast.innerHTML = `
+        <div class="flex items-start space-x-3">
+            <div class="flex-shrink-0">
+                <div class="w-10 h-10 rounded-full bg-${notification.data.color}-100 flex items-center justify-center">
+                    <span class="text-xl">${notification.data.icon}</span>
+                </div>
+            </div>
+            <div class="flex-1">
+                <p class="text-sm font-medium text-gray-900">${notification.data.message}</p>
+                <p class="text-xs text-gray-500 mt-1">just now</p>
+            </div>
+            <button onclick="this.parentElement.parentElement.remove()" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+            </button>
+        </div>
+    `;
+
+    document.body.appendChild(toast);
+
+    // Animate in
+    setTimeout(() => {
+        toast.classList.remove('translate-y-full', 'opacity-0');
+        toast.classList.add('translate-y-0', 'opacity-100');
+    }, 100);
+
+    // Auto remove after 5 seconds
+    setTimeout(() => {
+        toast.classList.add('translate-y-full', 'opacity-0');
+        setTimeout(() => toast.remove(), 300);
+    }, 5000);
+}
+
+// Play like sound effect
+function playLikeSound() {
+    // Create a simple beep sound using Web Audio API
+    const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    oscillator.frequency.value = 800; // Frequency of the sound
+    oscillator.type = 'sine';
+
+    gainNode.gain.setValueAtTime(0.1, audioContext.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.1);
+
+    oscillator.start(audioContext.currentTime);
+    oscillator.stop(audioContext.currentTime + 0.1);
+}
+
+// Update notification count
+function updateNotificationCount() {
+    fetch('/notifications/count')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                const badge = document.querySelector('#notificationBadge');
+                if (badge) {
+                    if (data.data.unread_count > 0) {
+                        badge.textContent = data.data.unread_count;
+                        badge.classList.remove('hidden');
+                        badge.classList.add('notification-badge');
+                    } else {
+                        badge.classList.add('hidden');
+                    }
+                }
+            }
+        });
 }
 
 // Follow user functionality
@@ -297,9 +599,38 @@ function followUser(userId) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
+            // Create follow notification
+            showNotificationToast({
+                data: {
+                    message: `You are now following ${data.status === 'followed' ? 'this user' : 'unfollowed this user'}`,
+                    icon: '👤',
+                    color: '#8b5cf6'
+                }
+            });
+
+            // Update UI without full reload
             location.reload();
         }
     });
+}
+
+// Initialize real-time features when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    startRealTimeNotifications();
+    updateNotificationCount();
+});
+
+// Debounce function for performance
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
 }
 </script>
 @endsection
