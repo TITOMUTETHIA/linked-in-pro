@@ -67,6 +67,14 @@ Route::get('/messages/{user}', [UserController::class, 'conversation'])->middlew
 Route::post('/messages/{user}', [UserController::class, 'sendMessage'])->middleware('auth')->name('messages.send');
 Route::get('/messages/unread', [UserController::class, 'unreadCount'])->middleware('auth')->name('messages.unread');
 
+// Notification routes
+Route::get('/notifications', [NotificationController::class, 'index'])->middleware('auth')->name('notifications.index');
+Route::get('/notifications/count', [NotificationController::class, 'count'])->middleware('auth')->name('notifications.count');
+Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead'])->middleware('auth')->name('notifications.read');
+Route::post('/notifications/read-all', [NotificationController::class, 'markAllAsRead'])->middleware('auth')->name('notifications.read-all');
+Route::delete('/notifications/{notification}', [NotificationController::class, 'destroy'])->middleware('auth')->name('notifications.destroy');
+Route::get('/notifications/stream', [NotificationController::class, 'stream'])->middleware('auth')->name('notifications.stream');
+
 // Authentication routes
 Route::middleware('guest')->group(function () {
     Route::get('/register', [RegisteredUserController::class, 'create'])->name('register');
