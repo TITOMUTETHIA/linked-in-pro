@@ -178,6 +178,11 @@ class UserController extends Controller
             $status = $isFollowing ? 'followed' : 'unfollowed';
         }
 
+        // Create notification if user just followed someone
+        if ($isFollowing) {
+            Notification::createFollowNotification($currentUser, $user);
+        }
+
         return response()->json([
             'success' => true,
             'is_following' => $isFollowing,
